@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barbearia</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============ TOPBAR ============ -->
+<header class="topbar">
+  <div class="logo" onclick="go('home')" style="cursor:pointer">
+    <div class="logo-icon">✂</div>
+    <div><span class="nome" id="brandName">Barbearia</span></div>
+  </div>
+  <nav>
+    <button onclick="go('home')">Início</button>
+    <button onclick="go('servicos')">Serviços</button>
+    <button onclick="go('agendar')">Agendar</button>
+    <button class="admin-btn" onclick="go('admin')">🔒 Admin</button>
+  </nav>
+</header>
+
+<!-- ============ HOME ============ -->
+<section id="view-home" class="view active">
+  <div class="hero">
+    <p class="hero-tag">Bem-vindo à</p>
+    <h1 id="heroNome">Barbearia</h1>
+    <p class="hero-slogan" id="heroSlogan"></p>
+    <div class="hero-btns">
+      <button class="btn btn-gold" onclick="go('agendar')">📅 Agendar agora</button>
+      <button class="btn btn-ghost" onclick="go('servicos')">Ver serviços</button>
+    </div>
+    <div class="hero-info" id="heroInfo"></div>
+  </div>
+</section>
+
+<!-- ============ SERVIÇOS ============ -->
+<section id="view-servicos" class="view">
+  <div class="wrap">
+    <h2 class="section-title">Nossos Serviços</h2>
+    <p class="section-sub">Escolha o serviço que combina com você. Todos os atendimentos são feitos com atenção aos detalhes.</p>
+    <div class="grid" id="servicosGrid"></div>
+  </div>
+</section>
+
+<!-- ============ AGENDAR ============ -->
+<section id="view-agendar" class="view">
+  <div class="wrap">
+    <h2 class="section-title">Agendar Atendimento</h2>
+    <p class="section-sub">Escolha o serviço, o dia e o horário. Depois é só deixar seu telefone — o barbeiro vai te chamar no WhatsApp para confirmar.</p>
+
+    <div class="agendar-grid">
+      <div>
+        <div class="card">
+          <h3><span class="num">1</span> Escolha o serviço</h3>
+          <select id="selServico" onchange="onServicoChange()"></select>
+          <p class="muted small" id="servicoDetalhe" style="margin-top:10px"></p>
+        </div>
+
+        <div class="card">
+          <h3><span class="num">2</span> Escolha o dia</h3>
+          <div class="cal-nav">
+            <button onclick="mudarMes(-1)">‹</button>
+            <span id="calMes"></span>
+            <button onclick="mudarMes(1)">›</button>
+          </div>
+          <div class="cal-dow">
+            <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+          <p class="muted small" style="margin-top:14px">🔒 Dias riscados = barbearia fechada.</p>
+        </div>
+
+        <div class="card">
+          <h3><span class="num">3</span> Escolha o horário</h3>
+          <div class="chips" id="horariosChips"></div>
+        </div>
+      </div>
+
+      <aside>
+        <div class="card sticky">
+          <h3><span class="num">4</span> Confirme seus dados</h3>
+          <div class="resumo" id="resumoBox"></div>
+          <div class="field">
+            <label>Seu nome</label>
+            <input type="text" id="inpNome" placeholder="Ex: João Silva">
+          </div>
+          <div class="field">
+            <label>WhatsApp / Telefone</label>
+            <input type="tel" id="inpTel" placeholder="(11) 99999-9999">
+          </div>
+          <button class="btn btn-gold" style="width:100%" onclick="enviarPedido()">
+            Solicitar agendamento
+          </button>
+          <p class="muted small" style="margin-top:12px;text-align:center;line-height:1.5">
+            O horário só é reservado após a confirmação do barbeiro.
+          </p>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ADMIN ============ -->
+<section id="view-admin" class="view">
+  <div class="wrap">
+
+    <div id="adminLogin" class="card login-card">
+      <div class="logo-icon" style="margin:0 auto 18px;width:52px;height:52px;font-size:1.5rem">🔒</div>
+      <h2>Área do Barbeiro</h2>
+      <p>Digite a senha para gerenciar o site.</p>
+      <input type="password" id="inpSenha" placeholder="Senha" style="text-align:center"
+             onkeydown="if(event.key==='Enter')login()">
+      <button class="btn btn-gold" style="width:100%;margin-top:14px" onclick="login()">Entrar</button>
+      <p class="muted small" style="margin-top:18px">Senha padrão: <b>1234</b> (troque em Configurações)</p>
+    </div>
+
+    <div id="adminPanel" style="display:none">
+      <div class="admin-head">
+        <h2>Painel do Barbeiro</h2>
+        <button class="btn btn-ghost btn-sm" onclick="logout()">Sair</button>
+      </div>
+
+      <div class="tabs">
+        <button data-tab="pedidos" onclick="setTab('pedidos')">
+          Pedidos <span class="badge-n" id="badgePedidos" style="display:none">0</span>
+        </button>
+        <button data-tab="servicos" onclick="setTab('servicos')">Serviços</button>
+        <button data-tab="agenda" onclick="setTab('agenda')">Agenda</button>
+        <button data-tab="config" onclick="setTab('config')">Configurações</button>
+      </div>
+
+      <div id="tab-pedidos" class="tab"></div>
+      <div id="tab-servicos" class="tab"></div>
+      <div id="tab-agenda" class="tab"></div>
+      <div id="tab-config" class="tab"></div>
+    </div>
+
+  </div>
+</section>
+
+<footer>
+  <span id="footerNome">Barbearia</span> • <span id="footerEnd"></span>
+</footer>
+
+<div id="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
