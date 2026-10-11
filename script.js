@@ -2,13 +2,13 @@
    🔥 CONFIGURAÇÃO DO FIREBASE
    ========================================================= */
 const firebaseConfig = {
-  apiKey: "SUA_API_KEY_AQUI",
-  authDomain: "SEU_PROJETO.firebaseapp.com",
-  databaseURL: "https://SEU_PROJETO-default-rtdb.firebaseio.com",
-  projectId: "SEU_PROJETO",
-  storageBucket: "SEU_PROJETO.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:xxxxxxxxxxxx"
+  apiKey: "AIzaSyCQ9-Hqu0HPc-5OrZ0mNSkxRkWYDRgQVK8",
+  authDomain: "barbearia-bde16.firebaseapp.com",
+  databaseURL: "https://barbearia-bde16-default-rtdb.firebaseio.com",
+  projectId: "barbearia-bde16",
+  storageBucket: "barbearia-bde16.firebasestorage.app",
+  messagingSenderId: "68576699591",
+  appId: "1:68576699591:web:e76812d7a8bee5c61ecae2"
 };
 
 /* =========================================================
