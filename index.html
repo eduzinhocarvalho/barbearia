@@ -1,8 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d0d0f">
 <title>Barbearia</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -10,9 +12,9 @@
 
 <!-- ============ TOPBAR ============ -->
 <header class="topbar">
-  <div class="logo" onclick="go('home')" style="cursor:pointer">
+  <div class="logo" onclick="go('home')">
     <div class="logo-icon">✂</div>
-    <div><span class="nome" id="brandName">Barbearia</span></div>
+    <span class="nome" id="brandName">Barbearia</span>
   </div>
   <nav>
     <button onclick="go('home')">Início</button>
@@ -40,7 +42,7 @@
 <section id="view-servicos" class="view">
   <div class="wrap">
     <h2 class="section-title">Nossos Serviços</h2>
-    <p class="section-sub">Escolha o serviço que combina com você. Todos os atendimentos são feitos com atenção aos detalhes.</p>
+    <p class="section-sub">Escolha o serviço que combina com você.</p>
     <div class="grid" id="servicosGrid"></div>
   </div>
 </section>
@@ -48,40 +50,40 @@
 <!-- ============ AGENDAR ============ -->
 <section id="view-agendar" class="view">
   <div class="wrap">
-    <h2 class="section-title">Agendar Atendimento</h2>
-    <p class="section-sub">Escolha o serviço, o dia e o horário. Depois é só deixar seu telefone — o barbeiro vai te chamar no WhatsApp para confirmar.</p>
+    <h2 class="section-title">Agendar</h2>
+    <p class="section-sub">Escolha o serviço, o dia e o horário. Depois é só deixar seu telefone.</p>
 
     <div class="agendar-grid">
       <div>
         <div class="card">
-          <h3><span class="num">1</span> Escolha o serviço</h3>
+          <h3><span class="num">1</span> Serviço</h3>
           <select id="selServico" onchange="onServicoChange()"></select>
           <p class="muted small" id="servicoDetalhe" style="margin-top:10px"></p>
         </div>
 
         <div class="card">
-          <h3><span class="num">2</span> Escolha o dia</h3>
+          <h3><span class="num">2</span> Dia</h3>
           <div class="cal-nav">
-            <button onclick="mudarMes(-1)">‹</button>
+            <button onclick="mudarMes(-1)" aria-label="Mês anterior">‹</button>
             <span id="calMes"></span>
-            <button onclick="mudarMes(1)">›</button>
+            <button onclick="mudarMes(1)" aria-label="Próximo mês">›</button>
           </div>
           <div class="cal-dow">
             <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
           </div>
           <div class="cal-grid" id="calGrid"></div>
-          <p class="muted small" style="margin-top:14px">🔒 Dias riscados = barbearia fechada.</p>
+          <p class="muted small" style="margin-top:14px">🔒 Dias riscados = fechado.</p>
         </div>
 
         <div class="card">
-          <h3><span class="num">3</span> Escolha o horário</h3>
+          <h3><span class="num">3</span> Horário</h3>
           <div class="chips" id="horariosChips"></div>
         </div>
       </div>
 
       <aside>
         <div class="card sticky">
-          <h3><span class="num">4</span> Confirme seus dados</h3>
+          <h3><span class="num">4</span> Seus dados</h3>
           <div class="resumo" id="resumoBox"></div>
           <div class="field">
             <label>Seu nome</label>
@@ -95,7 +97,7 @@
             Solicitar agendamento
           </button>
           <p class="muted small" style="margin-top:12px;text-align:center;line-height:1.5">
-            O horário só é reservado após a confirmação do barbeiro.
+            O horário só é reservado após confirmação do barbeiro.
           </p>
         </div>
       </aside>
@@ -114,7 +116,7 @@
       <input type="password" id="inpSenha" placeholder="Senha" style="text-align:center"
              onkeydown="if(event.key==='Enter')login()">
       <button class="btn btn-gold" style="width:100%;margin-top:14px" onclick="login()">Entrar</button>
-      <p class="muted small" style="margin-top:18px">Senha padrão: <b>1234</b> (troque em Configurações)</p>
+      <p class="muted small" style="margin-top:18px">Senha padrão: <b>1234</b></p>
     </div>
 
     <div id="adminPanel" style="display:none">
@@ -129,7 +131,7 @@
         </button>
         <button data-tab="servicos" onclick="setTab('servicos')">Serviços</button>
         <button data-tab="agenda" onclick="setTab('agenda')">Agenda</button>
-        <button data-tab="config" onclick="setTab('config')">Configurações</button>
+        <button data-tab="config" onclick="setTab('config')">Config</button>
       </div>
 
       <div id="tab-pedidos" class="tab"></div>
@@ -146,7 +148,8 @@
 </footer>
 
 <div id="toast"></div>
+<div id="syncStatus" class="sync-status">☁️ Conectando...</div>
 
-<script src="script.js"></script>
+<script type="module" src="script.js"></script>
 </body>
 </html>
