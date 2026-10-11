@@ -1,5 +1,26 @@
 /* =========================================================
-   DADOS
+   🔥 CONFIGURAÇÃO DO FIREBASE
+   Substitua o objeto abaixo pelo seu (pego no console Firebase)
+   ========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyCQ9-Hqu0HPc-5OrZ0mNSkxRkWYDRgQVK8",
+  authDomain: "barbearia-bde16.firebaseapp.com",
+  databaseURL: "https://barbearia-bde16-default-rtdb.firebaseio.com",
+  projectId: "barbearia-bde16",
+  storageBucket: "barbearia-bde16.firebasestorage.app",
+  messagingSenderId: "68576699591",
+  appId: "1:68576699591:web:e76812d7a8bee5c61ecae2"
+};
+
+/* =========================================================
+   IMPORTS DO FIREBASE (via CDN)
+   ========================================================= */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, set }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+/* =========================================================
+   DADOS PADRÃO
    ========================================================= */
 const STORAGE_KEY = 'barbearia_data_v1';
 
@@ -25,36 +46,47 @@ const DEFAULT_DATA = {
     horarioTexto: 'Seg a Sex • 09h às 19h'
   },
   servicos: [
-    { id:'s1', nome:'Corte Masculino', preco:35, descricao:'Máquina, tesoura e finalização com pomada. Aquele corte clássico bem feito.', duracao:30 },
-    { id:'s2', nome:'Barba', preco:25, descricao:'Toalha quente, navalha e óleo hidratante para deixar a barba alinhada.', duracao:20 },
-    { id:'s3', nome:'Barba + Cabelo', preco:45, descricao:'Combo completo: corte + barba na navalha. O pacote mais pedido da casa.', duracao:50 },
-    { id:'s4', nome:'Degradê / Fade', preco:40, descricao:'Degradê na régua com acabamento na navalha e desenho se quiser.', duracao:40 },
-    { id:'s5', nome:'Corte Infantil', preco:30, descricao:'Atendimento com paciência e capricho para os pequenos.', duracao:30 },
-    { id:'s6', nome:'Sobrancelha', preco:15, descricao:'Design de sobrancelha na navalha, respeitando o formato do rosto.', duracao:15 }
+    { id:'s1', nome:'Corte Masculino', preco:35, descricao:'Máquina, tesoura e finalização com pomada.', duracao:30 },
+    { id:'s2', nome:'Barba', preco:25, descricao:'Toalha quente, navalha e óleo hidratante.', duracao:20 },
+    { id:'s3', nome:'Barba + Cabelo', preco:45, descricao:'Combo completo: corte + barba na navalha.', duracao:50 },
+    { id:'s4', nome:'Degradê / Fade', preco:40, descricao:'Degradê na régua com acabamento na navalha.', duracao:40 },
+    { id:'s5', nome:'Corte Infantil', preco:30, descricao:'Atendimento com paciência para os pequenos.', duracao:30 },
+    { id:'s6', nome:'Sobrancelha', preco:15, descricao:'Design de sobrancelha na navalha.', duracao:15 }
   ],
   agenda: {
-    diasSemana: [false, true, true, true, true, true, false], // dom → sáb
-    bloqueados: [],   // datas fechadas (feriados / folgas)
-    liberados: [],    // datas abertas mesmo em dia fechado
+    diasSemana: [false, true, true, true, true, true, false],
+    bloqueados: [],
+    liberados: [],
     horarios: gerarHorarios('09:00','19:00',30)
   },
   pedidos: []
 };
 
-let DATA = loadData();
+/* =========================================================
+   ESTADO
+   ========================================================= */
+let DATA = JSON.parse(JSON.stringify(DEFAULT_DATA));
 let adminAuthed = sessionStorage.getItem('barber_admin') === '1';
 let adminTab = 'pedidos';
 let calRef = new Date();
 let selDate = null, selHora = null, selServicoId = null;
 let editServicoId = null;
+let firebaseReady = false;
+let saveTimer = null;
 
 /* =========================================================
-   PERSISTÊNCIA
+   FALLBACK: localStorage (usado só se Firebase não estiver configurado)
    ========================================================= */
-function loadData(){
+function loadLocal(){
   let d = null;
   try { d = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch(e){}
-  if(!d || typeof d !== 'object') d = {};
+  return d;
+}
+function saveLocal(){
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA)); } catch(e){}
+}
+function mergeDefaults(d){
+  d = d || {};
   return {
     config:   Object.assign({}, DEFAULT_DATA.config, d.config || {}),
     servicos: Array.isArray(d.servicos) ? d.servicos : JSON.parse(JSON.stringify(DEFAULT_DATA.servicos)),
@@ -62,13 +94,97 @@ function loadData(){
     pedidos:  Array.isArray(d.pedidos) ? d.pedidos : []
   };
 }
-function saveData(){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+
+/* =========================================================
+   FIREBASE — conexão em tempo real
+   ========================================================= */
+function initFirebase(){
+  const cfgOk = firebaseConfig.databaseURL && !firebaseConfig.databaseURL.includes('SEU_PROJETO');
+  if(!cfgOk){
+    console.warn('⚠️ Firebase não configurado. Usando localStorage (não sincroniza entre usuários).');
+    const local = loadLocal();
+    if(local) DATA = mergeDefaults(local);
+    setSyncStatus('Local (sem sync)', true);
+    renderTudo();
+    return;
+  }
+
+  try{
+    const app = initializeApp(firebaseConfig);
+    const db  = getDatabase(app);
+    const dataRef = ref(db, 'barbearia');
+
+    setSyncStatus('☁️ Conectando...', false);
+
+    onValue(dataRef, (snapshot) => {
+      const val = snapshot.val();
+      if(val){
+        DATA = mergeDefaults(val);
+        firebaseReady = true;
+        setSyncStatus('☁️ Sincronizado', false);
+      } else {
+        // Primeira vez: envia os dados padrão
+        set(dataRef, DEFAULT_DATA).then(() => {
+          firebaseReady = true;
+          setSyncStatus('☁️ Sincronizado', false);
+        });
+      }
+      renderTudo();
+      // guarda cópia local também (rápido)
+      saveLocal();
+    }, (err) => {
+      console.error('Erro no Firebase:', err);
+      setSyncStatus('Erro de conexão', true);
+      const local = loadLocal();
+      if(local) DATA = mergeDefaults(local);
+      renderTudo();
+    });
+
+  } catch(e){
+    console.error('Falha ao inicializar Firebase:', e);
+    setSyncStatus('Erro Firebase', true);
+    const local = loadLocal();
+    if(local) DATA = mergeDefaults(local);
+    renderTudo();
+  }
 }
-// se o admin editar noutra aba, atualiza aqui também
-window.addEventListener('storage', e => {
-  if(e.key === STORAGE_KEY){ DATA = loadData(); renderTudo(); }
-});
+
+function saveData(){
+  // Atualiza local imediatamente (feedback rápido)
+  saveLocal();
+
+  if(!firebaseReady){
+    return; // sem Firebase, só local
+  }
+
+  // debounce para não spammar o Firebase
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try{
+      const app = initializeApp(firebaseConfig);
+      const db  = getDatabase(app);
+      set(ref(db, 'barbearia'), DATA)
+        .then(() => setSyncStatus('☁️ Salvo', false))
+        .catch(err => {
+          console.error('Erro ao salvar no Firebase:', err);
+          setSyncStatus('Erro ao salvar', true);
+          toast('Não foi possível sincronizar. Verifique a conexão.', 'err');
+        });
+    }catch(e){
+      console.error(e);
+    }
+  }, 250);
+}
+
+function setSyncStatus(txt, erro){
+  const el = document.getElementById('syncStatus');
+  if(!el) return;
+  el.textContent = txt;
+  el.classList.toggle('err', !!erro);
+  el.classList.add('show');
+  clearTimeout(el._tm);
+  el._tm = setTimeout(() => el.classList.remove('show'), 2500);
+}
 
 /* =========================================================
    HELPERS
@@ -150,7 +266,7 @@ function renderTudo(){
 }
 
 /* =========================================================
-   SERVIÇOS (público)
+   SERVIÇOS
    ========================================================= */
 function renderServicos(){
   const g = document.getElementById('servicosGrid');
@@ -172,7 +288,7 @@ function renderServicos(){
 }
 
 /* =========================================================
-   AGENDAMENTO (público)
+   AGENDAMENTO
    ========================================================= */
 function renderAgendar(){
   const sel = document.getElementById('selServico');
@@ -314,7 +430,6 @@ function enviarPedido(){
   if(nome.length < 2)return toast('Digite seu nome.', 'err');
   if(tel.replace(/\D/g,'').length < 10) return toast('Digite um telefone válido com DDD.', 'err');
 
-  // confere se o horário ainda está livre
   const ocupado = DATA.pedidos.some(p =>
     p.data === selDate && p.hora === selHora && p.status !== 'cancelado');
   if(ocupado){
@@ -333,7 +448,6 @@ function enviarPedido(){
   });
   saveData();
 
-  // tela de sucesso
   const aside = document.querySelector('.agendar-grid');
   aside.innerHTML = `
     <div class="card" style="grid-column:1/-1">
@@ -345,7 +459,7 @@ function enviarPedido(){
           em <b>${fmtData(selDate)}</b> às <b>${selHora}</b> foi registrado.<br><br>
           O barbeiro vai te chamar no WhatsApp <b>${esc(tel)}</b> para confirmar.
         </p>
-        <button class="btn btn-ghost" style="margin-top:26px" onclick="go('home'); location.reload()">
+        <button class="btn btn-ghost" style="margin-top:26px" onclick="location.reload()">
           Voltar ao início
         </button>
       </div>
@@ -484,23 +598,25 @@ function renderAdminServicos(){
       <h3>${editando ? '✏️ Editando: ' + esc(editando.nome) : '➕ Novo serviço'}</h3>
       <div class="grid-3">
         <div class="field">
-          <label>Nome do serviço</label>
+          <label>Nome</label>
           <input type="text" id="svNome" placeholder="Ex: Barba + Cabelo"
                  value="${editando ? esc(editando.nome) : ''}">
         </div>
         <div class="field">
           <label>Preço (R$)</label>
           <input type="number" id="svPreco" step="0.01" min="0" placeholder="45"
+                 inputmode="decimal"
                  value="${editando ? editando.preco : ''}">
         </div>
         <div class="field">
           <label>Duração (min)</label>
           <input type="number" id="svDur" min="0" placeholder="30"
+                 inputmode="numeric"
                  value="${editando && editando.duracao ? editando.duracao : ''}">
         </div>
       </div>
       <div class="field">
-        <label>Descrição (aparece no site)</label>
+        <label>Descrição</label>
         <textarea id="svDesc" rows="2" placeholder="Fale um pouco sobre esse corte...">${editando ? esc(editando.descricao || '') : ''}</textarea>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -511,7 +627,7 @@ function renderAdminServicos(){
       </div>
     </div>
 
-    <h3 style="margin:26px 0 14px">Serviços cadastrados (${DATA.servicos.length})</h3>
+    <h3 style="margin:22px 0 14px;font-size:1rem">Serviços cadastrados (${DATA.servicos.length})</h3>
     ${DATA.servicos.length ? DATA.servicos.map(s => `
       <div class="servico-admin">
         <div class="servico-admin-info">
@@ -558,7 +674,7 @@ function salvarServico(){
 function editarServico(id){
   editServicoId = id;
   renderAdminServicos();
-  window.scrollTo({ top: document.getElementById('view-admin').offsetTop + 100, behavior:'smooth' });
+  window.scrollTo({ top: document.getElementById('view-admin').offsetTop + 60, behavior:'smooth' });
 }
 function cancelarEdicao(){
   editServicoId = null;
@@ -577,7 +693,8 @@ function excluirServico(id){
 }
 
 /* ---------- AGENDA ---------- */
-const DIAS_NOMES = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const DIAS_NOMES = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const DIAS_NOMES_FULL = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 
 function renderAdminAgenda(){
   const el = document.getElementById('tab-agenda');
@@ -585,7 +702,7 @@ function renderAdminAgenda(){
 
   el.innerHTML = `
     <div class="card">
-      <h3>📆 Dias da semana que você trabalha</h3>
+      <h3>📆 Dias de trabalho</h3>
       <div class="dias-grid">
         ${DIAS_NOMES.map((n,i) => `
           <button class="dia-btn ${ag.diasSemana[i] ? 'on' : 'off'}"
@@ -593,20 +710,21 @@ function renderAdminAgenda(){
         `).join('')}
       </div>
       <p class="muted small" style="margin-top:12px">
-        Verde = aberto • Riscado = fechado. Por padrão, domingo e sábado ficam fechados.
+        Verde = aberto • Riscado = fechado
       </p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
-        <button class="btn btn-ghost btn-sm" onclick="presetDias('semSabDom')">Só Seg–Sex</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+        <button class="btn btn-ghost btn-sm" onclick="presetDias('semSabDom')">Seg–Sex</button>
         <button class="btn btn-ghost btn-sm" onclick="presetDias('comSabado')">Seg–Sáb</button>
-        <button class="btn btn-ghost btn-sm" onclick="presetDias('todos')">Todos os dias</button>
+        <button class="btn btn-ghost btn-sm" onclick="presetDias('todos')">Todos</button>
       </div>
     </div>
 
     <div class="card">
-      <h3>🚫 Datas fechadas (feriados, folgas, viagens)</h3>
+      <h3>🚫 Fechar dias específicos</h3>
+      <p class="muted small" style="margin-bottom:12px">Feriados, folgas, viagens</p>
       <div class="grid-2">
         <div class="field" style="margin:0">
-          <label>Escolha a data</label>
+          <label>Data</label>
           <input type="date" id="inpBloqueio">
         </div>
         <div class="field" style="margin:0;display:flex;align-items:flex-end">
@@ -626,13 +744,13 @@ function renderAdminAgenda(){
     </div>
 
     <div class="card">
-      <h3>✅ Datas abertas fora do normal</h3>
-      <p class="muted small" style="margin-bottom:14px">
-        Use para trabalhar num dia que normalmente estaria fechado (ex: um sábado específico).
+      <h3>✅ Abrir dias fora do normal</h3>
+      <p class="muted small" style="margin-bottom:12px">
+        Ex: trabalhar num sábado específico
       </p>
       <div class="grid-2">
         <div class="field" style="margin:0">
-          <label>Escolha a data</label>
+          <label>Data</label>
           <input type="date" id="inpLiberado">
         </div>
         <div class="field" style="margin:0;display:flex;align-items:flex-end">
@@ -652,20 +770,20 @@ function renderAdminAgenda(){
     </div>
 
     <div class="card">
-      <h3>🕐 Horários de atendimento</h3>
-      <p class="muted small" style="margin-bottom:14px">
-        Clique para ativar/desativar um horário. Verde = disponível para agendamento.
+      <h3>🕐 Horários disponíveis</h3>
+      <p class="muted small" style="margin-bottom:12px">
+        Toque para ativar/desativar
       </p>
-      <div class="chips" style="margin-bottom:20px">
+      <div class="chips" style="margin-bottom:18px">
         ${ag.horarios.length
           ? ag.horarios.map(h => `
               <button class="chip ${horarioAtivo(h) ? 'on' : 'off'}"
                       onclick="toggleHorario('${h}')">${h}</button>`).join('')
-          : '<p class="muted small">Nenhum horário gerado.</p>'}
+          : '<p class="muted small">Nenhum horário.</p>'}
       </div>
 
       <hr class="sep">
-      <h3>⚙️ Gerar grade de horários</h3>
+      <h3 style="font-size:.95rem">⚙️ Gerar grade automática</h3>
       <div class="grid-3">
         <div class="field" style="margin:0">
           <label>Início</label>
@@ -677,15 +795,13 @@ function renderAdminAgenda(){
         </div>
         <div class="field" style="margin:0">
           <label>Intervalo (min)</label>
-          <input type="number" id="gInt" value="30" min="5" step="5">
+          <input type="number" id="gInt" value="30" min="5" step="5" inputmode="numeric">
         </div>
       </div>
       <button class="btn btn-gold btn-sm" style="margin-top:14px" onclick="gerarGrade()">
-        Gerar grade automaticamente
+        Gerar grade
       </button>
-      <p class="muted small" style="margin-top:10px">
-        ⚠️ Isso substitui a lista de horários atual.
-      </p>
+      <p class="muted small" style="margin-top:10px">⚠️ Substitui a lista atual</p>
     </div>
   `;
 }
@@ -769,7 +885,7 @@ function gerarGrade(){
   if(!ini || !fim) return toast('Preencha início e fim.', 'err');
   if(!pass || pass < 5) return toast('Intervalo inválido.', 'err');
   const lista = gerarHorarios(ini, fim, pass);
-  if(!lista.length) return toast('Nenhum horário gerado. Confira o horário final.', 'err');
+  if(!lista.length) return toast('Nenhum horário gerado.', 'err');
   DATA.agenda.horarios = lista;
   saveData();
   renderAdminAgenda();
@@ -777,7 +893,7 @@ function gerarGrade(){
   toast(lista.length + ' horários gerados ✅','ok');
 }
 
-/* ---------- CONFIGURAÇÕES ---------- */
+/* ---------- CONFIG ---------- */
 function renderAdminConfig(){
   const el = document.getElementById('tab-config');
   const c = DATA.config;
@@ -785,11 +901,11 @@ function renderAdminConfig(){
     <div class="card">
       <h3>🏪 Dados da barbearia</h3>
       <div class="field">
-        <label>Nome da barbearia</label>
+        <label>Nome</label>
         <input type="text" id="cfNome" value="${esc(c.nome)}">
       </div>
       <div class="field">
-        <label>Frase de destaque (slogan)</label>
+        <label>Slogan</label>
         <input type="text" id="cfSlogan" value="${esc(c.slogan)}">
       </div>
       <div class="grid-2">
@@ -798,29 +914,30 @@ function renderAdminConfig(){
           <input type="text" id="cfEnd" value="${esc(c.endereco)}">
         </div>
         <div class="field">
-          <label>Texto do horário (exibido no site)</label>
+          <label>Horário exibido</label>
           <input type="text" id="cfHor" value="${esc(c.horarioTexto)}">
         </div>
       </div>
       <div class="grid-2">
         <div class="field">
-          <label>WhatsApp do barbeiro (com DDI)</label>
-          <input type="text" id="cfZap" value="${esc(c.whatsapp)}" placeholder="5511999999999">
+          <label>WhatsApp (com DDI)</label>
+          <input type="text" id="cfZap" value="${esc(c.whatsapp)}"
+                 placeholder="5511999999999" inputmode="tel">
         </div>
         <div class="field">
           <label>Senha do painel</label>
           <input type="text" id="cfSenha" value="${esc(c.senha)}">
         </div>
       </div>
-      <button class="btn btn-gold btn-sm" onclick="salvarConfig()">Salvar configurações</button>
+      <button class="btn btn-gold btn-sm" onclick="salvarConfig()">Salvar</button>
     </div>
 
     <div class="card">
       <h3>🗑️ Zona de perigo</h3>
       <p class="muted small" style="margin-bottom:14px">
-        Restaura serviços, agenda e pedidos para o padrão de fábrica. Não tem volta.
+        Restaura tudo ao padrão. Não tem volta.
       </p>
-      <button class="btn btn-no btn-sm" onclick="resetarTudo()">Restaurar tudo ao padrão</button>
+      <button class="btn btn-no btn-sm" onclick="resetarTudo()">Restaurar padrão</button>
     </div>
   `;
 }
@@ -842,14 +959,28 @@ function salvarConfig(){
 
 function resetarTudo(){
   if(!confirm('Isso vai apagar TODOS os serviços, a agenda e os pedidos. Continuar?')) return;
-  localStorage.removeItem(STORAGE_KEY);
-  DATA = loadData();
+  DATA = JSON.parse(JSON.stringify(DEFAULT_DATA));
   editServicoId = null; selDate = null; selHora = null; selServicoId = null;
+  saveData();
   renderTudo();
   toast('Tudo restaurado ao padrão.','ok');
 }
 
 /* =========================================================
+   EXPÕE FUNÇÕES PARA O HTML (onclick)
+   ========================================================= */
+Object.assign(window, {
+  go, login, logout, setTab,
+  onServicoChange, mudarMes, enviarPedido,
+  setStatus, delPedido,
+  salvarServico, editarServico, cancelarEdicao, excluirServico,
+  toggleDia, presetDias,
+  addBloqueio, removerBloqueio, addLiberado, removerLiberado,
+  toggleHorario, gerarGrade,
+  salvarConfig, resetarTudo
+});
+
+/* =========================================================
    INICIALIZAÇÃO
    ========================================================= */
-renderTudo();
+initFirebase();
