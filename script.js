@@ -1,19 +1,18 @@
 /* =========================================================
    🔥 CONFIGURAÇÃO DO FIREBASE
-   Substitua o objeto abaixo pelo seu (pego no console Firebase)
    ========================================================= */
 const firebaseConfig = {
-  apiKey: "AIzaSyCQ9-Hqu0HPc-5OrZ0mNSkxRkWYDRgQVK8",
-  authDomain: "barbearia-bde16.firebaseapp.com",
-  databaseURL: "https://barbearia-bde16-default-rtdb.firebaseio.com",
-  projectId: "barbearia-bde16",
-  storageBucket: "barbearia-bde16.firebasestorage.app",
-  messagingSenderId: "68576699591",
-  appId: "1:68576699591:web:e76812d7a8bee5c61ecae2"
+  apiKey: "SUA_API_KEY_AQUI",
+  authDomain: "SEU_PROJETO.firebaseapp.com",
+  databaseURL: "https://SEU_PROJETO-default-rtdb.firebaseio.com",
+  projectId: "SEU_PROJETO",
+  storageBucket: "SEU_PROJETO.appspot.com",
+  messagingSenderId: "000000000000",
+  appId: "1:000000000000:web:xxxxxxxxxxxx"
 };
 
 /* =========================================================
-   IMPORTS DO FIREBASE (via CDN)
+   IMPORTS
    ========================================================= */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, onValue, set }
@@ -23,6 +22,7 @@ import { getDatabase, ref, onValue, set }
    DADOS PADRÃO
    ========================================================= */
 const STORAGE_KEY = 'barbearia_data_v1';
+const CART_KEY = 'barbearia_cart_v1';
 
 function gerarHorarios(inicio, fim, passo){
   const out = [];
@@ -53,6 +53,12 @@ const DEFAULT_DATA = {
     { id:'s5', nome:'Corte Infantil', preco:30, descricao:'Atendimento com paciência para os pequenos.', duracao:30 },
     { id:'s6', nome:'Sobrancelha', preco:15, descricao:'Design de sobrancelha na navalha.', duracao:15 }
   ],
+  produtos: [
+    { id:'pr1', nome:'Pomada Modeladora', descricao:'Fixa forte com efeito matte. Ideal para cabelos curtos e médios. Não deixa resíduo.', preco:45, estoque:12, imagem:'https://placehold.co/500x500/1b1b21/d4af37?text=Pomada' },
+    { id:'pr2', nome:'Gel Fixador', descricao:'Brilho intenso e fixação duradoura o dia todo. Fácil de lavar.', preco:25, estoque:20, imagem:'https://placehold.co/500x500/1b1b21/d4af37?text=Gel' },
+    { id:'pr3', nome:'Óleo para Barba', descricao:'Hidrata e amacia a barba. Fragrância amadeirada, absorção rápida.', preco:38, estoque:8, imagem:'https://placehold.co/500x500/1b1b21/d4af37?text=Óleo' },
+    { id:'pr4', nome:'Máquina de Corte', descricao:'Máquina profissional com fio. Lâmina de aço inox, motor silencioso.', preco:189, estoque:3, imagem:'https://placehold.co/500x500/1b1b21/d4af37?text=Máquina' }
+  ],
   agenda: {
     diasSemana: [false, true, true, true, true, true, false],
     bloqueados: [],
@@ -71,11 +77,19 @@ let adminTab = 'pedidos';
 let calRef = new Date();
 let selDate = null, selHora = null, selServicoId = null;
 let editServicoId = null;
+let editProdutoId = null;
 let firebaseReady = false;
 let saveTimer = null;
 
+// Carrinho de produtos (persistido em sessionStorage)
+let carrinho = {};
+try { carrinho = JSON.parse(sessionStorage.getItem(CART_KEY) || '{}') || {}; } catch(e){ carrinho = {}; }
+function saveCart(){
+  try { sessionStorage.setItem(CART_KEY, JSON.stringify(carrinho)); } catch(e){}
+}
+
 /* =========================================================
-   FALLBACK: localStorage (usado só se Firebase não estiver configurado)
+   PERSISTÊNCIA LOCAL
    ========================================================= */
 function loadLocal(){
   let d = null;
@@ -90,6 +104,7 @@ function mergeDefaults(d){
   return {
     config:   Object.assign({}, DEFAULT_DATA.config, d.config || {}),
     servicos: Array.isArray(d.servicos) ? d.servicos : JSON.parse(JSON.stringify(DEFAULT_DATA.servicos)),
+    produtos: Array.isArray(d.produtos) ? d.produtos : JSON.parse(JSON.stringify(DEFAULT_DATA.produtos)),
     agenda:   Object.assign({}, DEFAULT_DATA.agenda, d.agenda || {}),
     pedidos:  Array.isArray(d.pedidos) ? d.pedidos : []
   };
@@ -101,7 +116,7 @@ function mergeDefaults(d){
 function initFirebase(){
   const cfgOk = firebaseConfig.databaseURL && !firebaseConfig.databaseURL.includes('SEU_PROJETO');
   if(!cfgOk){
-    console.warn('⚠️ Firebase não configurado. Usando localStorage (não sincroniza entre usuários).');
+    console.warn('⚠️ Firebase não configurado. Usando localStorage.');
     const local = loadLocal();
     if(local) DATA = mergeDefaults(local);
     setSyncStatus('Local (sem sync)', true);
@@ -123,14 +138,12 @@ function initFirebase(){
         firebaseReady = true;
         setSyncStatus('☁️ Sincronizado', false);
       } else {
-        // Primeira vez: envia os dados padrão
         set(dataRef, DEFAULT_DATA).then(() => {
           firebaseReady = true;
           setSyncStatus('☁️ Sincronizado', false);
         });
       }
       renderTudo();
-      // guarda cópia local também (rápido)
       saveLocal();
     }, (err) => {
       console.error('Erro no Firebase:', err);
@@ -150,14 +163,9 @@ function initFirebase(){
 }
 
 function saveData(){
-  // Atualiza local imediatamente (feedback rápido)
   saveLocal();
+  if(!firebaseReady) return;
 
-  if(!firebaseReady){
-    return; // sem Firebase, só local
-  }
-
-  // debounce para não spammar o Firebase
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try{
@@ -166,13 +174,11 @@ function saveData(){
       set(ref(db, 'barbearia'), DATA)
         .then(() => setSyncStatus('☁️ Salvo', false))
         .catch(err => {
-          console.error('Erro ao salvar no Firebase:', err);
+          console.error('Erro ao salvar:', err);
           setSyncStatus('Erro ao salvar', true);
-          toast('Não foi possível sincronizar. Verifique a conexão.', 'err');
+          toast('Não foi possível sincronizar.', 'err');
         });
-    }catch(e){
-      console.error(e);
-    }
+    }catch(e){ console.error(e); }
   }, 250);
 }
 
@@ -202,6 +208,9 @@ function fmtData(ds){
   const d = new Date(ds + 'T12:00:00');
   return d.toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit', year:'numeric' });
 }
+function fmtMoney(n){
+  return 'R$ ' + Number(n || 0).toFixed(2).replace('.', ',');
+}
 function toast(msg, tipo){
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -220,8 +229,7 @@ function msgWA(p){
   if(p.status === 'confirmado'){
     return `Olá ${p.nome}! Seu agendamento na ${cfg.nome} está *CONFIRMADO* ✅\n\n` +
            `✂️ Serviço: ${p.servicoNome}\n📅 Data: ${fmtData(p.data)}\n🕐 Horário: ${p.hora}\n` +
-           `💰 Valor: R$ ${Number(p.preco).toFixed(2).replace('.',',')}\n\n` +
-           `📍 ${cfg.endereco}\n\nAté lá!`;
+           `💰 Valor: ${fmtMoney(p.preco)}\n\n📍 ${cfg.endereco}\n\nAté lá!`;
   }
   if(p.status === 'cancelado'){
     return `Olá ${p.nome}, infelizmente não vamos conseguir te atender em ${fmtData(p.data)} às ${p.hora}. ` +
@@ -242,8 +250,12 @@ function go(v){
   window.scrollTo({ top:0, behavior:'smooth' });
 
   if(v === 'servicos') renderServicos();
+  if(v === 'produtos') renderProdutos();
   if(v === 'agendar')  renderAgendar();
   if(v === 'admin')    renderAdmin();
+
+  // esconde barra do carrinho quando não estiver em produtos/qualquer lugar que não seja produtos
+  updateCartBarVisibility(v);
 }
 
 /* =========================================================
@@ -261,6 +273,8 @@ function renderTudo(){
   document.title = c.nome + ' — Agendamento';
 
   renderServicos();
+  renderProdutos();
+  renderCartBar();
   renderAgendar();
   renderAdmin();
 }
@@ -279,12 +293,207 @@ function renderServicos(){
     <div class="servico">
       <div class="servico-top">
         <div class="servico-nome">${esc(s.nome)}</div>
-        <div class="servico-preco">R$ ${Number(s.preco).toFixed(2).replace('.',',')}</div>
+        <div class="servico-preco">${fmtMoney(s.preco)}</div>
       </div>
       <p class="servico-desc">${esc(s.descricao || '')}</p>
       ${s.duracao ? `<div class="servico-dur">⏱️ Duração média: ${esc(s.duracao)} min</div>` : ''}
     </div>
   `).join('');
+}
+
+/* =========================================================
+   PRODUTOS (público)
+   ========================================================= */
+function renderProdutos(){
+  const g = document.getElementById('produtosGrid');
+  if(!g) return;
+
+  if(!DATA.produtos.length){
+    g.innerHTML = '<div class="produto vazio-msg">Nenhum produto cadastrado ainda.</div>';
+    return;
+  }
+
+  g.innerHTML = DATA.produtos.map(p => {
+    const qty = carrinho[p.id] || 0;
+    const semEstoque = !p.estoque || p.estoque <= 0;
+    const cls = semEstoque ? 'zero' : (p.estoque <= 3 ? 'baixo' : '');
+    const txtEstoque = semEstoque ? 'Esgotado' :
+      (p.estoque <= 3 ? `Só ${p.estoque} restantes` : `${p.estoque} em estoque`);
+
+    return `
+      <div class="produto ${semEstoque ? 'esgotado' : ''}">
+        <div class="produto-img-wrap">
+          <img src="${esc(p.imagem || '')}" alt="${esc(p.nome)}" class="produto-img" loading="lazy"
+               onerror="this.src='https://placehold.co/500x500/1b1b21/9a9aa6?text=Sem+foto'">
+          <span class="produto-estoque ${cls}">${txtEstoque}</span>
+        </div>
+        <div class="produto-body">
+          <div class="produto-top">
+            <div class="produto-nome">${esc(p.nome)}</div>
+            <div class="produto-preco">${fmtMoney(p.preco)}</div>
+          </div>
+          <p class="produto-desc">${esc(p.descricao || '')}</p>
+          <div class="produto-actions">
+            <div class="qty-control">
+              <button onclick="changeQty('${p.id}', -1)" ${qty <= 0 ? 'disabled' : ''} aria-label="Diminuir">−</button>
+              <span class="${qty === 0 ? 'zero' : ''}">${qty}</span>
+              <button onclick="changeQty('${p.id}', 1)" ${semEstoque || qty >= p.estoque ? 'disabled' : ''} aria-label="Aumentar">+</button>
+            </div>
+            <button class="produto-add" onclick="changeQty('${p.id}', 1)"
+                    ${semEstoque || qty >= p.estoque ? 'disabled' : ''}>
+              ${qty > 0 ? '✓ Adicionado' : 'Adicionar'}
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function changeQty(id, delta){
+  const p = DATA.produtos.find(x => x.id === id);
+  if(!p) return;
+
+  const cur = carrinho[id] || 0;
+  let next = cur + delta;
+  if(next < 0) next = 0;
+  if(next > p.estoque){
+    toast(`Só temos ${p.estoque} em estoque.`, 'err');
+    next = p.estoque;
+  }
+
+  if(next === 0) delete carrinho[id];
+  else carrinho[id] = next;
+
+  saveCart();
+  renderProdutos();
+  renderCartBar();
+}
+
+/* =========================================================
+   CARRINHO — barra + modal
+   ========================================================= */
+function getCartInfo(){
+  const ids = Object.keys(carrinho).filter(id => carrinho[id] > 0);
+  let total = 0, count = 0;
+  ids.forEach(id => {
+    const p = DATA.produtos.find(x => x.id === id);
+    if(!p) return;
+    count += carrinho[id];
+    total += p.preco * carrinho[id];
+  });
+  return { ids, count, total };
+}
+
+function renderCartBar(){
+  const bar = document.getElementById('cartBar');
+  if(!bar) return;
+  const { count, total } = getCartInfo();
+  document.getElementById('cartCount').textContent = count;
+  document.getElementById('cartTotal').textContent = fmtMoney(total);
+  bar.classList.toggle('show', count > 0);
+}
+
+function updateCartBarVisibility(view){
+  const bar = document.getElementById('cartBar');
+  if(!bar) return;
+  const { count } = getCartInfo();
+  const deveMostrar = count > 0 && (view === 'produtos' || view === 'home' || view === 'servicos' || view === 'agendar');
+  bar.classList.toggle('show', deveMostrar);
+}
+
+function abrirCarrinho(){
+  const modal = document.getElementById('cartModal');
+  if(!modal) return;
+  renderCartItems();
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function fecharCarrinho(){
+  const modal = document.getElementById('cartModal');
+  if(!modal) return;
+  modal.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function renderCartItems(){
+  const box = document.getElementById('cartItems');
+  if(!box) return;
+
+  const { ids, total } = getCartInfo();
+  if(!ids.length){
+    box.innerHTML = `
+      <div class="cart-vazio">
+        <span class="ico">🛒</span>
+        Seu carrinho está vazio.<br>
+        Adicione produtos para continuar.
+      </div>`;
+    return;
+  }
+
+  box.innerHTML = ids.map(id => {
+    const p = DATA.produtos.find(x => x.id === id);
+    if(!p) return '';
+    const q = carrinho[id];
+    const sub = p.preco * q;
+    return `
+      <div class="cart-item">
+        <img src="${esc(p.imagem || '')}" alt=""
+             onerror="this.src='https://placehold.co/100x100/1b1b21/9a9aa6?text=?'">
+        <div class="cart-item-info">
+          <strong>${esc(p.nome)}</strong>
+          <small>${fmtMoney(p.preco)} cada</small>
+          <div class="cart-item-qty">
+            <button onclick="changeQty('${p.id}', -1)" aria-label="Diminuir">−</button>
+            <span>${q}</span>
+            <button onclick="changeQty('${p.id}', 1)" aria-label="Aumentar">+</button>
+          </div>
+        </div>
+        <div class="cart-item-preco">${fmtMoney(sub)}</div>
+      </div>`;
+  }).join('') + `
+    <div class="cart-total-row">
+      <span>Total</span>
+      <span>${fmtMoney(total)}</span>
+    </div>`;
+}
+
+function enviarCarrinho(){
+  const { ids, total } = getCartInfo();
+  if(!ids.length) return toast('Adicione produtos ao carrinho primeiro.', 'err');
+
+  const zap = DATA.config.whatsapp;
+  if(!zap) return toast('WhatsApp do barbeiro não configurado.', 'err');
+
+  const pergunta = (document.getElementById('cartPergunta').value || '').trim();
+
+  let msg = `Olá! Vi esses produtos no site da *${DATA.config.nome}* e gostaria de saber:\n\n`;
+  ids.forEach(id => {
+    const p = DATA.produtos.find(x => x.id === id);
+    if(!p) return;
+    const q = carrinho[id];
+    const sub = p.preco * q;
+    msg += `• ${p.nome} — ${q}x — ${fmtMoney(sub)}\n`;
+  });
+  msg += `\n*Total:* ${fmtMoney(total)}\n`;
+  if(pergunta) msg += `\n*Minha pergunta:* ${pergunta}`;
+
+  const url = waLink(zap, msg);
+  window.open(url, '_blank');
+
+  // não limpa automaticamente — deixa o cliente decidir
+  toast('Abrindo WhatsApp...', 'ok');
+}
+
+function limparCarrinho(){
+  if(!Object.keys(carrinho).length) return;
+  if(!confirm('Limpar o carrinho?')) return;
+  carrinho = {};
+  saveCart();
+  renderProdutos();
+  renderCartBar();
+  renderCartItems();
+  toast('Carrinho limpo.');
 }
 
 /* =========================================================
@@ -297,7 +506,7 @@ function renderAgendar(){
   const anterior = selServicoId || sel.value;
   sel.innerHTML = '<option value="">Selecione um serviço...</option>' +
     DATA.servicos.map(s =>
-      `<option value="${s.id}">${esc(s.nome)} — R$ ${Number(s.preco).toFixed(2).replace('.',',')}</option>`
+      `<option value="${s.id}">${esc(s.nome)} — ${fmtMoney(s.preco)}</option>`
     ).join('');
 
   if(anterior && DATA.servicos.some(s => s.id === anterior)){
@@ -415,7 +624,7 @@ function renderResumo(){
     <div class="resumo-linha"><span>Horário</span><span>${selHora || '—'}</span></div>
     <div class="resumo-linha resumo-total">
       <span>Total</span>
-      <span>${s ? 'R$ ' + Number(s.preco).toFixed(2).replace('.',',') : 'R$ 0,00'}</span>
+      <span>${s ? fmtMoney(s.preco) : 'R$ 0,00'}</span>
     </div>`;
 }
 
@@ -490,6 +699,7 @@ function logout(){
 }
 function setTab(t){
   adminTab = t;
+  editProdutoId = null; // reseta edição ao trocar de aba
   renderAdmin();
 }
 
@@ -523,6 +733,7 @@ function renderAdmin(){
 
   if(adminTab === 'pedidos')  renderAdminPedidos();
   if(adminTab === 'servicos') renderAdminServicos();
+  if(adminTab === 'produtos') renderAdminProdutos();
   if(adminTab === 'agenda')   renderAdminAgenda();
   if(adminTab === 'config')   renderAdminConfig();
 }
@@ -552,7 +763,7 @@ function renderAdminPedidos(){
         <div class="pedido-info">
           <span>📅 <b>${fmtData(p.data)}</b></span>
           <span>🕐 <b>${esc(p.hora)}</b></span>
-          <span>✂️ <b>${esc(p.servicoNome)}</b> — R$ ${Number(p.preco).toFixed(2).replace('.',',')}</span>
+          <span>✂️ <b>${esc(p.servicoNome)}</b> — ${fmtMoney(p.preco)}</span>
         </div>
         <div class="pedido-tel">📞 ${esc(p.telefone)}</div>
       </div>
@@ -605,8 +816,7 @@ function renderAdminServicos(){
         <div class="field">
           <label>Preço (R$)</label>
           <input type="number" id="svPreco" step="0.01" min="0" placeholder="45"
-                 inputmode="decimal"
-                 value="${editando ? editando.preco : ''}">
+                 inputmode="decimal" value="${editando ? editando.preco : ''}">
         </div>
         <div class="field">
           <label>Duração (min)</label>
@@ -634,7 +844,7 @@ function renderAdminServicos(){
           <strong>${esc(s.nome)}</strong>
           <small>${esc(s.descricao || 'Sem descrição')}${s.duracao ? ' • ⏱️ ' + s.duracao + ' min' : ''}</small>
         </div>
-        <div class="servico-admin-preco">R$ ${Number(s.preco).toFixed(2).replace('.',',')}</div>
+        <div class="servico-admin-preco">${fmtMoney(s.preco)}</div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-ghost btn-sm" onclick="editarServico('${s.id}')">Editar</button>
           <button class="btn btn-del btn-sm" onclick="excluirServico('${s.id}')">Excluir</button>
@@ -692,9 +902,196 @@ function excluirServico(id){
   toast('Serviço excluído.');
 }
 
-/* ---------- AGENDA ---------- */
+/* =========================================================
+   ADMIN — PRODUTOS
+   ========================================================= */
+function renderAdminProdutos(){
+  const el = document.getElementById('tab-produtos');
+  const editando = DATA.produtos.find(p => p.id === editProdutoId);
+  const imgSrc = editando ? (editando.imagem || '') : '';
+
+  el.innerHTML = `
+    <div class="card">
+      <h3>${editando ? '✏️ Editando: ' + esc(editando.nome) : '➕ Novo produto'}</h3>
+
+      <div class="grid-2">
+        <div class="field">
+          <label>Nome do produto</label>
+          <input type="text" id="prNome" placeholder="Ex: Pomada Modeladora"
+                 value="${editando ? esc(editando.nome) : ''}">
+        </div>
+        <div class="field">
+          <label>Preço (R$)</label>
+          <input type="number" id="prPreco" step="0.01" min="0" placeholder="45"
+                 inputmode="decimal" value="${editando ? editando.preco : ''}">
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label>Quantidade em estoque</label>
+          <input type="number" id="prEstoque" min="0" placeholder="10"
+                 inputmode="numeric" value="${editando ? editando.estoque : ''}">
+        </div>
+        <div class="field">
+          <label>Foto do produto (URL)</label>
+          <input type="text" id="prImagem" placeholder="https://..."
+                 value="${esc(imgSrc)}" oninput="previewImg(this.value)">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Ou envie uma foto do celular (até 300 KB)</label>
+        <input type="file" id="prFile" accept="image/*" onchange="uploadImg(event)">
+        <p class="img-help">
+          💡 Dica: prefira colar um link de imagem (imgur.com, etc). Fotos muito grandes deixam o site lento.
+        </p>
+      </div>
+
+      <div class="img-preview" id="prPreview">
+        ${imgSrc
+          ? `<img src="${esc(imgSrc)}" alt="prévia"
+                  onerror="this.parentNode.innerHTML='<span class=placeholder>Imagem inválida</span>'">`
+          : '<span class="placeholder">Prévia da imagem</span>'}
+      </div>
+
+      <div class="field" style="margin-top:14px">
+        <label>Descrição</label>
+        <textarea id="prDesc" rows="3"
+          placeholder="Fale um pouco sobre o produto...">${editando ? esc(editando.descricao || '') : ''}</textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-gold btn-sm" onclick="salvarProduto()">
+          ${editando ? 'Salvar alterações' : 'Adicionar produto'}
+        </button>
+        ${editando ? '<button class="btn btn-ghost btn-sm" onclick="cancelarEdicaoProduto()">Cancelar</button>' : ''}
+      </div>
+    </div>
+
+    <h3 style="margin:22px 0 14px;font-size:1rem">Produtos cadastrados (${DATA.produtos.length})</h3>
+    ${DATA.produtos.length ? DATA.produtos.map(p => {
+      const cls = !p.estoque || p.estoque <= 0 ? 'zero' : (p.estoque <= 3 ? 'baixo' : '');
+      const txt = !p.estoque || p.estoque <= 0 ? 'Esgotado' : `${p.estoque} em estoque`;
+      return `
+        <div class="produto-admin">
+          <img class="produto-admin-img" src="${esc(p.imagem || '')}" alt=""
+               onerror="this.src='https://placehold.co/100x100/1b1b21/9a9aa6?text=?'">
+          <div class="produto-admin-info">
+            <strong>${esc(p.nome)}</strong>
+            <small>${esc(p.descricao || 'Sem descrição')}</small>
+            <span class="produto-admin-estoque ${cls}">📦 ${txt}</span>
+          </div>
+          <div class="produto-admin-preco">${fmtMoney(p.preco)}</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="editarProduto('${p.id}')">Editar</button>
+            <button class="btn btn-del btn-sm" onclick="excluirProduto('${p.id}')">Excluir</button>
+          </div>
+        </div>`;
+    }).join('') : '<p class="muted">Nenhum produto cadastrado.</p>'}
+  `;
+}
+
+function previewImg(url){
+  const box = document.getElementById('prPreview');
+  if(!box) return;
+  if(!url || !url.trim()){
+    box.innerHTML = '<span class="placeholder">Prévia da imagem</span>';
+    return;
+  }
+  box.innerHTML = `<img src="${esc(url)}" alt="prévia"
+    onerror="this.parentNode.innerHTML='<span class=placeholder>Não foi possível carregar</span>'">`;
+}
+
+function uploadImg(ev){
+  const file = ev.target.files && ev.target.files[0];
+  if(!file) return;
+
+  if(file.size > 300 * 1024){
+    toast('Imagem muito grande. Use até 300 KB ou cole um link.', 'err');
+    ev.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    document.getElementById('prImagem').value = dataUrl;
+    previewImg(dataUrl);
+    toast('Imagem carregada ✅','ok');
+  };
+  reader.readAsDataURL(file);
+}
+
+function salvarProduto(){
+  const nome  = document.getElementById('prNome').value.trim();
+  const preco = parseFloat(document.getElementById('prPreco').value);
+  const est   = parseInt(document.getElementById('prEstoque').value);
+  const img   = document.getElementById('prImagem').value.trim();
+  const desc  = document.getElementById('prDesc').value.trim();
+
+  if(nome.length < 2)              return toast('Digite o nome do produto.', 'err');
+  if(isNaN(preco) || preco < 0)    return toast('Digite um preço válido.', 'err');
+  if(isNaN(est) || est < 0)        return toast('Digite um estoque válido.', 'err');
+
+  const imagem = img || 'https://placehold.co/500x500/1b1b21/9a9aa6?text=Sem+foto';
+
+  if(editProdutoId){
+    const p = DATA.produtos.find(x => x.id === editProdutoId);
+    if(p){
+      p.nome = nome; p.preco = preco; p.estoque = est;
+      p.imagem = imagem; p.descricao = desc;
+    }
+    editProdutoId = null;
+    toast('Produto atualizado ✅','ok');
+  } else {
+    DATA.produtos.push({
+      id: 'pr' + Date.now(),
+      nome, preco, estoque: est, imagem, descricao: desc
+    });
+    toast('Produto adicionado ✅','ok');
+  }
+
+  // se o estoque baixou, ajusta o carrinho (opcional, evita inconsistência)
+  DATA.produtos.forEach(p => {
+    if(carrinho[p.id] && carrinho[p.id] > p.estoque){
+      if(p.estoque <= 0) delete carrinho[p.id];
+      else carrinho[p.id] = p.estoque;
+    }
+  });
+  saveCart();
+
+  saveData();
+  renderAdmin();
+  renderProdutos();
+  renderCartBar();
+}
+
+function editarProduto(id){
+  editProdutoId = id;
+  renderAdminProdutos();
+  window.scrollTo({ top: document.getElementById('view-admin').offsetTop + 60, behavior:'smooth' });
+}
+function cancelarEdicaoProduto(){
+  editProdutoId = null;
+  renderAdminProdutos();
+}
+function excluirProduto(id){
+  const p = DATA.produtos.find(x => x.id === id);
+  if(!confirm('Excluir o produto "' + (p ? p.nome : '') + '"?')) return;
+  DATA.produtos = DATA.produtos.filter(x => x.id !== id);
+  delete carrinho[id];
+  saveCart();
+  saveData();
+  renderAdmin();
+  renderProdutos();
+  renderCartBar();
+  toast('Produto excluído.');
+}
+
+/* =========================================================
+   ADMIN — AGENDA
+   ========================================================= */
 const DIAS_NOMES = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-const DIAS_NOMES_FULL = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 
 function renderAdminAgenda(){
   const el = document.getElementById('tab-agenda');
@@ -709,9 +1106,7 @@ function renderAdminAgenda(){
                   onclick="toggleDia(${i})">${n}</button>
         `).join('')}
       </div>
-      <p class="muted small" style="margin-top:12px">
-        Verde = aberto • Riscado = fechado
-      </p>
+      <p class="muted small" style="margin-top:12px">Verde = aberto • Riscado = fechado</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
         <button class="btn btn-ghost btn-sm" onclick="presetDias('semSabDom')">Seg–Sex</button>
         <button class="btn btn-ghost btn-sm" onclick="presetDias('comSabado')">Seg–Sáb</button>
@@ -728,9 +1123,7 @@ function renderAdminAgenda(){
           <input type="date" id="inpBloqueio">
         </div>
         <div class="field" style="margin:0;display:flex;align-items:flex-end">
-          <button class="btn btn-gold btn-sm" style="width:100%" onclick="addBloqueio()">
-            Fechar este dia
-          </button>
+          <button class="btn btn-gold btn-sm" style="width:100%" onclick="addBloqueio()">Fechar este dia</button>
         </div>
       </div>
       <div class="lista-datas">
@@ -745,18 +1138,14 @@ function renderAdminAgenda(){
 
     <div class="card">
       <h3>✅ Abrir dias fora do normal</h3>
-      <p class="muted small" style="margin-bottom:12px">
-        Ex: trabalhar num sábado específico
-      </p>
+      <p class="muted small" style="margin-bottom:12px">Ex: trabalhar num sábado específico</p>
       <div class="grid-2">
         <div class="field" style="margin:0">
           <label>Data</label>
           <input type="date" id="inpLiberado">
         </div>
         <div class="field" style="margin:0;display:flex;align-items:flex-end">
-          <button class="btn btn-ghost btn-sm" style="width:100%" onclick="addLiberado()">
-            Abrir este dia
-          </button>
+          <button class="btn btn-ghost btn-sm" style="width:100%" onclick="addLiberado()">Abrir este dia</button>
         </div>
       </div>
       <div class="lista-datas">
@@ -771,9 +1160,7 @@ function renderAdminAgenda(){
 
     <div class="card">
       <h3>🕐 Horários disponíveis</h3>
-      <p class="muted small" style="margin-bottom:12px">
-        Toque para ativar/desativar
-      </p>
+      <p class="muted small" style="margin-bottom:12px">Toque para ativar/desativar</p>
       <div class="chips" style="margin-bottom:18px">
         ${ag.horarios.length
           ? ag.horarios.map(h => `
@@ -798,17 +1185,13 @@ function renderAdminAgenda(){
           <input type="number" id="gInt" value="30" min="5" step="5" inputmode="numeric">
         </div>
       </div>
-      <button class="btn btn-gold btn-sm" style="margin-top:14px" onclick="gerarGrade()">
-        Gerar grade
-      </button>
+      <button class="btn btn-gold btn-sm" style="margin-top:14px" onclick="gerarGrade()">Gerar grade</button>
       <p class="muted small" style="margin-top:10px">⚠️ Substitui a lista atual</p>
     </div>
   `;
 }
 
-function horarioAtivo(h){
-  return (DATA.agenda.horarios || []).includes(h);
-}
+function horarioAtivo(h){ return (DATA.agenda.horarios || []).includes(h); }
 
 function toggleDia(i){
   DATA.agenda.diasSemana[i] = !DATA.agenda.diasSemana[i];
@@ -817,36 +1200,25 @@ function toggleDia(i){
   renderCal();
   renderHorarios();
 }
-
 function presetDias(tipo){
   if(tipo === 'semSabDom') DATA.agenda.diasSemana = [false,true,true,true,true,true,false];
   if(tipo === 'comSabado') DATA.agenda.diasSemana = [false,true,true,true,true,true,true];
   if(tipo === 'todos')     DATA.agenda.diasSemana = [true,true,true,true,true,true,true];
-  saveData();
-  renderAdminAgenda();
-  renderCal();
-  renderHorarios();
+  saveData(); renderAdminAgenda(); renderCal(); renderHorarios();
   toast('Dias atualizados ✅','ok');
 }
-
 function addBloqueio(){
   const v = document.getElementById('inpBloqueio').value;
   if(!v) return toast('Escolha uma data.', 'err');
   if(DATA.agenda.bloqueados.includes(v)) return toast('Essa data já está fechada.');
   DATA.agenda.bloqueados.push(v);
   DATA.agenda.liberados = DATA.agenda.liberados.filter(d => d !== v);
-  saveData();
-  renderAdminAgenda();
-  renderCal();
-  renderHorarios();
+  saveData(); renderAdminAgenda(); renderCal(); renderHorarios();
   toast('Dia fechado ✅','ok');
 }
 function removerBloqueio(d){
   DATA.agenda.bloqueados = DATA.agenda.bloqueados.filter(x => x !== d);
-  saveData();
-  renderAdminAgenda();
-  renderCal();
-  renderHorarios();
+  saveData(); renderAdminAgenda(); renderCal(); renderHorarios();
 }
 function addLiberado(){
   const v = document.getElementById('inpLiberado').value;
@@ -854,30 +1226,20 @@ function addLiberado(){
   if(DATA.agenda.liberados.includes(v)) return toast('Essa data já está aberta.');
   DATA.agenda.liberados.push(v);
   DATA.agenda.bloqueados = DATA.agenda.bloqueados.filter(d => d !== v);
-  saveData();
-  renderAdminAgenda();
-  renderCal();
-  renderHorarios();
+  saveData(); renderAdminAgenda(); renderCal(); renderHorarios();
   toast('Dia aberto ✅','ok');
 }
 function removerLiberado(d){
   DATA.agenda.liberados = DATA.agenda.liberados.filter(x => x !== d);
-  saveData();
-  renderAdminAgenda();
-  renderCal();
-  renderHorarios();
+  saveData(); renderAdminAgenda(); renderCal(); renderHorarios();
 }
-
 function toggleHorario(h){
   const arr = DATA.agenda.horarios;
   const i = arr.indexOf(h);
   if(i >= 0) arr.splice(i,1); else arr.push(h);
   arr.sort();
-  saveData();
-  renderAdminAgenda();
-  renderHorarios();
+  saveData(); renderAdminAgenda(); renderHorarios();
 }
-
 function gerarGrade(){
   const ini  = document.getElementById('gIni').value;
   const fim  = document.getElementById('gFim').value;
@@ -887,13 +1249,13 @@ function gerarGrade(){
   const lista = gerarHorarios(ini, fim, pass);
   if(!lista.length) return toast('Nenhum horário gerado.', 'err');
   DATA.agenda.horarios = lista;
-  saveData();
-  renderAdminAgenda();
-  renderHorarios();
+  saveData(); renderAdminAgenda(); renderHorarios();
   toast(lista.length + ' horários gerados ✅','ok');
 }
 
-/* ---------- CONFIG ---------- */
+/* =========================================================
+   ADMIN — CONFIG
+   ========================================================= */
 function renderAdminConfig(){
   const el = document.getElementById('tab-config');
   const c = DATA.config;
@@ -958,22 +1320,27 @@ function salvarConfig(){
 }
 
 function resetarTudo(){
-  if(!confirm('Isso vai apagar TODOS os serviços, a agenda e os pedidos. Continuar?')) return;
+  if(!confirm('Isso vai apagar TODOS os serviços, produtos, agenda e pedidos. Continuar?')) return;
   DATA = JSON.parse(JSON.stringify(DEFAULT_DATA));
-  editServicoId = null; selDate = null; selHora = null; selServicoId = null;
+  carrinho = {};
+  saveCart();
+  editServicoId = null; editProdutoId = null;
+  selDate = null; selHora = null; selServicoId = null;
   saveData();
   renderTudo();
   toast('Tudo restaurado ao padrão.','ok');
 }
 
 /* =========================================================
-   EXPÕE FUNÇÕES PARA O HTML (onclick)
+   EXPÕE FUNÇÕES PARA O HTML
    ========================================================= */
 Object.assign(window, {
   go, login, logout, setTab,
   onServicoChange, mudarMes, enviarPedido,
   setStatus, delPedido,
   salvarServico, editarServico, cancelarEdicao, excluirServico,
+  changeQty, abrirCarrinho, fecharCarrinho, enviarCarrinho, limparCarrinho,
+  previewImg, uploadImg, salvarProduto, editarProduto, cancelarEdicaoProduto, excluirProduto,
   toggleDia, presetDias,
   addBloqueio, removerBloqueio, addLiberado, removerLiberado,
   toggleHorario, gerarGrade,
