@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -19,6 +18,7 @@
   <nav>
     <button onclick="go('home')">Início</button>
     <button onclick="go('servicos')">Serviços</button>
+    <button onclick="go('produtos')">Produtos</button>
     <button onclick="go('agendar')">Agendar</button>
     <button class="admin-btn" onclick="go('admin')">🔒 Admin</button>
   </nav>
@@ -33,6 +33,7 @@
     <div class="hero-btns">
       <button class="btn btn-gold" onclick="go('agendar')">📅 Agendar agora</button>
       <button class="btn btn-ghost" onclick="go('servicos')">Ver serviços</button>
+      <button class="btn btn-ghost" onclick="go('produtos')">🛍️ Ver produtos</button>
     </div>
     <div class="hero-info" id="heroInfo"></div>
   </div>
@@ -44,6 +45,15 @@
     <h2 class="section-title">Nossos Serviços</h2>
     <p class="section-sub">Escolha o serviço que combina com você.</p>
     <div class="grid" id="servicosGrid"></div>
+  </div>
+</section>
+
+<!-- ============ PRODUTOS ============ -->
+<section id="view-produtos" class="view">
+  <div class="wrap">
+    <h2 class="section-title">Nossos Produtos</h2>
+    <p class="section-sub">Escolha a quantidade que deseja. Depois envie uma mensagem pro barbeiro tirar suas dúvidas e verificar a disponibilidade.</p>
+    <div class="produtos-grid" id="produtosGrid"></div>
   </div>
 </section>
 
@@ -130,12 +140,14 @@
           Pedidos <span class="badge-n" id="badgePedidos" style="display:none">0</span>
         </button>
         <button data-tab="servicos" onclick="setTab('servicos')">Serviços</button>
+        <button data-tab="produtos" onclick="setTab('produtos')">Produtos</button>
         <button data-tab="agenda" onclick="setTab('agenda')">Agenda</button>
         <button data-tab="config" onclick="setTab('config')">Config</button>
       </div>
 
       <div id="tab-pedidos" class="tab"></div>
       <div id="tab-servicos" class="tab"></div>
+      <div id="tab-produtos" class="tab"></div>
       <div id="tab-agenda" class="tab"></div>
       <div id="tab-config" class="tab"></div>
     </div>
@@ -149,6 +161,45 @@
 
 <div id="toast"></div>
 <div id="syncStatus" class="sync-status">☁️ Conectando...</div>
+
+<!-- ============ CARRINHO (barra fixa) ============ -->
+<div id="cartBar" class="cart-bar" onclick="abrirCarrinho()">
+  <div class="cart-bar-left">
+    <span class="cart-count" id="cartCount">0</span>
+    <span class="cart-label">itens no carrinho</span>
+  </div>
+  <div class="cart-bar-right">
+    <span class="cart-total" id="cartTotal">R$ 0,00</span>
+    <span class="cart-arrow">›</span>
+  </div>
+</div>
+
+<!-- ============ CARRINHO (modal) ============ -->
+<div id="cartModal" class="cart-modal">
+  <div class="cart-modal-bg" onclick="fecharCarrinho()"></div>
+  <div class="cart-modal-content">
+    <div class="cart-head">
+      <h3>🛒 Meu carrinho</h3>
+      <button onclick="fecharCarrinho()" class="cart-close" aria-label="Fechar">✕</button>
+    </div>
+
+    <div id="cartItems" class="cart-items"></div>
+
+    <div class="cart-foot">
+      <div class="field">
+        <label>Sua pergunta (opcional)</label>
+        <textarea id="cartPergunta" rows="2"
+          placeholder="Ex: Todos esses produtos estão disponíveis? Esse gel funciona bem?"></textarea>
+      </div>
+      <button class="btn btn-wa" style="width:100%" onclick="enviarCarrinho()">
+        📱 Enviar pelo WhatsApp
+      </button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px" onclick="limparCarrinho()">
+        Limpar carrinho
+      </button>
+    </div>
+  </div>
+</div>
 
 <script type="module" src="script.js"></script>
 </body>
